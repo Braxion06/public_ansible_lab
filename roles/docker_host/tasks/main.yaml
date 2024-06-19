@@ -1,0 +1,66 @@
+# Install docker prerequisites
+- name: Install prerequisites
+  tags: os
+  block:
+    - name: Handle ubuntu prerequisites
+      tags: os
+      block:
+        - name: Install necessary packages
+          tags: os
+          ansible.builtin.apt:
+            name:
+              - ca-certificates
+              - software-properties-common
+            state: present
+
+        - name: Add docker GPG key
+          tags: os
+          ansible.builtin.get_url:
+            url: "https://download.docker.com/linux/ubuntu/gpg"
+            dest: /etc/apt/keyrings/docker.asc
+            owner: root
+            group: root
+            mode: '0644'
+
+        - name: Add docker repository
+          tags: os
+          ansible.builtin.apt_repository:
+            repo: "{{ docker_apt_repository }}"
+            state: present
+
+# Install docker
+- name: Install docker packages
+  tags: docker
+  ansible.builtin.package:
+    name:
+      - docker-ce
+      - docker-ce-cli
+      - containerd.io
+      - docker-buildx-plugin
+      - docker-compose-plugin
+
+# User
+- name: User block
+  block:
+    - name: Create user "{{ client_user }}"
+      tags: user, always
+      ansible.builtin.user:
+        name: "{{ client_user }}"
+        groups:
+          - root
+          - docker
+        append: true
+
+    - name: Add ssh key for "{{ client_user }}"
+      tags: user, always, ssh
+      ansible.posix.authorized_key:
+        user: "{{ client_user }}"
+        key: "{{ lookup('file', '../general_templates/public_keys/{{ client_pub_key }}') }}"
+
+    - name: Set the default shell for the dock user
+      tags: user
+      when: client_user == 'dock'
+      ansible.builtin.user:
+        name: dock
+        shell: /bin/bash
+

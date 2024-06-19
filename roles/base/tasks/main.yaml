@@ -1,0 +1,124 @@
+# OS
+- name: Update Arch based Linux
+  tags: arch
+  when: ansible_os_family == 'Arch'
+  community.general.pacman:
+    update_cache: true
+    upgrade: true
+
+- name: Update Debian based Linux
+  tags: debian
+  when: ansible_os_family == 'Debian'
+  ansible.builtin.apt:
+    update_cache: true
+    upgrade: dist
+
+- name: Update RedHat based Linux
+  tags: rhel
+  when: ansible_os_family == 'Redhat'
+  ansible.builtin.shell:
+    cmd: dnf clean all && sudo dnf distro-sync
+
+
+# USER
+- name: Handle ssh_users
+  tags: user, always, ssh
+  when: not inventory_hostname in groups ['ansible_server']
+  block:
+    - name: Create user khlabansible
+      tags: user, always
+      ansible.builtin.user:
+        name: khlabansible
+        groups: root
+        shell: /bin/bash
+
+    - name: Add ssh key for khlabansible
+      tags: user, always, ssh
+      ansible.posix.authorized_key:
+        user: khlabansible
+        key: "{{ lookup('file', '../general_templates/public_keys/khlab_ansible_client_key.pub') }}"
+
+    - name: Add sudoers file for khlabansible
+      tags: user, always, ssh
+      ansible.builtin.template:
+        src: sudoers_khlabansible.j2
+        dest: /etc/sudoers.d/khlabansible
+        owner: root
+        group: root
+        mode: "440"
+
+# TERMINAL
+- name: Install terminal applications
+  tags: terminal
+  ansible.builtin.package:
+    name:
+      - zsh
+      - openssh-client
+      - openssh-server
+      - tmux
+      - xsel # For tmux copy paste
+      - tree
+      - htop
+      - iperf3
+      - bat
+      - gdu
+    state: latest
+
+# PRODUCTIVITY
+- name: Install productivity, management and work packages
+  tags: productivity, package_manager
+  ansible.builtin.package:
+    name:
+      - git
+    state: latest
+
+# SERVICES
+- name: Configure sshd service from template
+  tags: ssh, always, ssh
+  ansible.builtin.template:
+    src: "{{ sshd_template }}"
+    dest: /etc/ssh/sshd_config
+    owner: root
+    group: root
+    mode: "744"
+  notify: restart_ssh
+
+  # MISC
+- name: Check if Arch based Linux requires a reboot
+  tags: arch, always
+  when: ansible_os_family == 'Arch' and not inventory_hostname in groups ['mission_critical']
+  ansible.builtin.stat:
+    path: /run/reboot-required
+  register: arch_reboot_required
+
+- name: Reboot Arch based Linux if necessary
+  tags: arch, always
+  when: arch_reboot_required.stat.exists | default(false)
+  ansible.builtin.reboot:
+    reboot_timeout: 300
+
+- name: Check if Debian based Linux requires a reboot
+  tags: debian, always
+  when: ansible_os_family == 'Debian' and not inventory_hostname in groups ['mission_critical']
+  ansible.builtin.stat:
+    path: /var/run/reboot-required
+  register: debian_reboot_required
+
+- name: Reboot Debian based Linux if necessary
+  tags: debian, always
+  when: debian_reboot_required.stat.exists | default(false)
+  ansible.builtin.reboot:
+    reboot_timeout: 300
+
+- name: Check if Redhat based Linux requires a reboot
+  tags: redhat, misc
+  when: ansible_os_family == 'Redhat'
+  ansible.builtin.stat:
+    path: /var/run/reboot-required.pkgs
+  register: redhat_reboot_required
+
+- name: Show message if reboot is required
+  tags: misc
+  when: redhat_reboot_required.stat.exists | default(false)
+  ansible.builtin.debug:
+    msg: System needs to reboot

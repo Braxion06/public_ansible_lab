@@ -1,0 +1,13 @@
+---
+
+- name: Apply the base role
+  hosts: ansible_server
+  become: true
+  roles:
+    - base
+
+- name: Apply the ansible_server role
+  hosts: ansible_server
+  become: true
+  roles:
+    - ansible_server

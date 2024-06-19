@@ -1,0 +1,46 @@
+---
+- name: Update all packages of Debian and Arch based Linux
+  hosts: localhost
+  become: true
+  tasks:
+    - name: Update Arch based Linux
+      tags: Arch
+      when: ansible_facts['os_family'] == 'Arch'
+      community.general.pacman:
+        update_cache: true
+        upgrade: true
+      register: arch_update_result
+
+    - name: Check if Arch based Linux requires a reboot
+      tags: Arch
+      when: ansible_facts['os_family'] == 'Arch' and arch_update_result.changed
+      ansible.builtin.stat:
+        path: /run/reboot-required
+      register: arch_reboot_required
+
+    - name: Reboot Arch based Linux if necessary
+      tags: Arch
+      when: arch_reboot_required.stat.exists | default(false)
+      ansible.builtin.reboot:
+        reboot_timeout: 300
+
+    - name: Update Debian based Linux
+      tags: Debian
+      when: ansible_facts['os_family'] == 'Debian'
+      ansible.builtin.apt:
+        update_cache: true
+        upgrade: dist
+      register: debian_update_result
+
+    - name: Check if Debian based Linux requires a reboot
+      tags: Debian
+      when: ansible_facts['os_family'] == 'Debian' and debian_update_result.changed
+      ansible.builtin.stat:
+        path: /var/run/reboot-required
+      register: debian_reboot_required
+
+    - name: Reboot Debian based Linux if necessary
+      tags: Debian
+      when: debian_reboot_required.stat.exists | default(false)
+      ansible.builtin.reboot:
+        reboot_timeout: 300

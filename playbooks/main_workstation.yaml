@@ -1,0 +1,25 @@
+---
+
+- name: Apply the base role
+  hosts: main_workstation
+  become: true
+  roles:
+    - base
+
+- name: Apply the main_workstation role
+  hosts: main_workstation
+  become: true
+  roles:
+    - main_workstation
+
+- name: Apply the hypervisor role
+  hosts: main_workstation
+  become: true
+  roles:
+    - hypervisor
+
+- name: Apply the docker role
+  hosts: main_workstation
+  become: true
+  roles:
+    - docker_host

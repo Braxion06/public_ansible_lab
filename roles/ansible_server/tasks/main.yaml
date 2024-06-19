@@ -1,0 +1,55 @@
+# USER
+- name: Create user anscontrol
+  tags: user, always
+  ansible.builtin.user:
+    name: anscontrol
+    groups: root
+    shell: /bin/bash
+
+- name: Add ssh key for anscontrol
+  tags: user, always, ssh
+  ansible.posix.authorized_key:
+    user: anscontrol
+    key: "{{ lookup('file', '../general_templates/public_keys/ansible_control_key.pub') }}"
+
+- name: Add sudoers file for anscontrol
+  tags: user, always, ssh
+  ansible.builtin.template:
+    src: sudoers_anscontrol.j2
+    dest: /etc/sudoers.d/anscontrol
+    owner: root
+    group: root
+    mode: "440"
+
+# TERMINAL
+- name: Install terminal applications
+  tags: terminal
+  ansible.builtin.package:
+    name:
+      - sshpass
+    state: latest
+
+# PRODUCTIVITY
+- name: Install productivity, management and work packages
+  tags: productivity, package_manager
+  ansible.builtin.package:
+    name:
+      - python3-pip
+    state: latest
+
+
+# PIP3
+- name: Install pip3 packages
+  tags: pip
+  ansible.builtin.pip:
+    name:
+      - ansible
+      - ansible-dev-tools
+      - requests
+
+# ANSIBLE
+- name: Upgrade community.general ansible collection
+  tags: ansible
+  ansible.builtin.shell:
+    cmd: ansible-galaxy collection install community.general --force
+  changed_when: false

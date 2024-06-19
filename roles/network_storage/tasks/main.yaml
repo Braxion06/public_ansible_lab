@@ -1,0 +1,24 @@
+# STORAGE
+- name: Configure fstab with network shares
+  tags: storage, network_shares
+  ansible.builtin.blockinfile:
+    marker: "{mark} NETWORK SHARES ANSIBLE MANAGED BLOCK"
+    path: /etc/fstab
+    block: "{{storage_network_shares}}"
+    insertafter: EOF
+    backup: true
+
+# - name: Create and set owner of new directories for the mounted drives
+#   tags: storage, network_shares 
+#   when: not inventory_hostname in groups['main_workstation']
+#   block: 
+#   - name: Docker directories
+#     tags: storage, network_shares
+#     when: inventory_hostname in groups ['docker']
+#     ansible.builtin.file:
+#       name: 
+#         - /mnt/share
+#       state: directory
+#       owner: "{{ client_user }}"
+#       group: "{{ client_user }}"
+#       mode: "664"

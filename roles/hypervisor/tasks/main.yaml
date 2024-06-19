@@ -1,0 +1,53 @@
+# HARDWARE
+- name: Set up PCIe Passthrough
+  block:
+    - name: Turn on IOMMU in grub if AMD
+      tags: hardware
+      when: '"AuthenticAMD" in ansible_processor'
+      ansible.builtin.lineinfile:
+        path: /etc/default/grub
+        regex: '^GRUB_CMDLINE_LINUX_DEFAULT='
+        line: 'GRUB_CMDLINE_LINUX_DEFAULT="quiet splash amd_iommu=on iommu=pt"'
+      notify: update_grub
+
+    - name: Turn on IOMMU in grub if intel
+      tags: hardware
+      when: '"GenuineIntel" in ansible_processor'
+      ansible.builtin.lineinfile:
+        path: /etc/default/grub
+        regex: '^GRUB_CMDLINE_LINUX_DEFAULT='
+        line: 'GRUB_CMDLINE_LINUX_DEFAULT="quiet splash intel_iommu=on iommu=pt"'
+      notify: update_grub
+
+    - name: Configure IOMMU modules
+      tags: hardware
+      ansible.builtin.blockinfile:
+        path: /etc/modules
+        block: "{{ iommu_modules }}"
+        insertafter: EOF
+        backup: true
+      notify: reboot_client
+
+- name: Update microcode and firmware
+  block:
+    - name: Install latest linux-firmware
+      tags: hardware
+      when: inventory_hostname not in groups['proxmox']
+      ansible.builtin.package:
+        name: linux-firmware
+        state: latest
+
+
+    - name: Get cpu type microcode intel or amd
+      tags: hardware
+      ansible.builtin.set_fact:
+        cpu_type_microcode: "{{ 'amd64-microcode' if 'AuthenticAMD' in ansible_processor else
+          'intel-microcode' if 'GenuineIntel' in ansible_processor }}"
+
+
+    - name: Update cpu microcode
+      tags: hardware
+      when: ansible_os_family == 'Debian'
+      ansible.builtin.package:
+        name: "{{ cpu_type_microcode }}"
+        state: latest

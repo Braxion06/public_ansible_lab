@@ -1,0 +1,13 @@
+# OS 
+- name: Install os packages
+  tags: OS
+  ansible.builtin.package:
+    name: qemu-guest-agent
+    state: latest
+  notify: start_qemu_guest_agent
+
+- name: enable_serial_service
+  ansible.builtin.service:
+    name: serial-getty@ttyS0.service
+    state: started
+    enabled: true

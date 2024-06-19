@@ -1,0 +1,694 @@
+# USER
+- name: User block
+  block:
+    - name: Add group "{{ client_user }}"
+      tags: user,  always
+      ansible.builtin.group:
+        name: "{{ client_user }}"
+
+    - name: Create user "{{ client_user }}"
+      tags: user, always
+      ansible.builtin.user:
+        name: "{{ client_user }}"
+        groups:
+          - root
+          - "{{ client_user }}"
+        append: true
+        shell: /bin/zsh
+
+    - name: Add ssh key for "{{ client_user }}"
+      tags: user, always, ssh
+      ansible.posix.authorized_key:
+        user: braxion
+        key: "{{ lookup('file', '../general_templates/public_keys/{{ client_pub_key }}') }}"
+
+# Dangerous, shouldn't be done
+  # - name: Add sudoers file for braxion
+  #   tags: user, always, ssh
+  #   ansible.builtin.template:
+  #     src: sudoers_braxion.j2
+  #     dest: /etc/sudoers.d/braxion
+  #     owner: root
+  #     group: root
+  #     mode: "0440"
+
+# STORAGE
+- name: Configure fstab file with drives
+  tags: storage, local_drive
+  ansible.builtin.blockinfile:
+    marker: "# {mark} LOCAL STORAGE ANSIBLE MANAGED BLOCK"
+    path: /etc/fstab
+    block: "{{ storage_local_drives }}"
+    insertafter: EOF
+    backup: true
+
+- name: Create and set owner of common mounted drives
+  tags: storage, local_drives
+  ansible.builtin.file:
+    path: /mnt/home
+    state: directory
+    owner: braxion
+    group: root
+    mode: "0765"
+
+- name: Create and set owner of braxionbuild mounted drives
+  tags: storage, local_drives
+  when: ansible_hostname == 'braxionbuild'
+  ansible.builtin.file:
+    path: "/mnt/{{ item }}"
+    state: directory
+    owner: braxion
+    group: root
+    mode: "765"
+  loop:
+    - library
+    - main_storage
+    - windows_os
+  changed_when: false
+
+- name: Mount all automatic drives and network_shares configured in fstab
+  tags: storage, local_drives
+  ansible.builtin.shell:
+    cmd: mount -a
+  changed_when: false
+
+- name: Delete all Default media and docs directories
+  tags: storage
+  become: true
+  become_user: braxion
+  ansible.builtin.file:
+    path: "/home/braxion/{{ item }}"
+    state: absent
+  loop:
+    - Documents
+    - Downloads
+    - Music
+    - Pictures
+    - Public
+    - snap
+    - Videos
+
+
+# PACKAGE_MANAGER
+- name: Handle apt
+  tags: package_manager, apt
+  when: ansible_os_family == 'Debian'
+  block:
+    - name: Handle braxiongo's debian package manager
+      tags: package_manager, apt, surface
+      when: ansible_hostname == 'braxiongo'
+      block:
+        - name: Check for the linux surface repo
+          tags: package_manager, apt, surface
+          ansible.builtin.stat:
+            path: /etc/apt/sources.list.d/linux-surface.list
+          register: check_linux_surface_repo
+
+        - name: Handle linux-surface repo for braxiongo
+          tags: package_manager, apt, surface
+          when: not check_linux_surface_repo.stat.exists | default(false)
+          block:
+            - name: Add linux-surface repo gpg key
+              tags: package_manager, apt, surface
+              ansible.builtin.shell:
+                cmd: wget -qO - https://raw.githubusercontent.com/linux-surface/linux-surface/master/pkg/keys/surface.asc | gpg --dearmor | sudo dd of=/etc/apt/trusted.gpg.d/linux-surface.gpg
+
+            - name: Add linux-surface repo
+              tags: package_manager, apt, surface
+              ansible.builtin.lineinfile:
+                path: /etc/apt/sources.list.d/linux-surface.list
+                regex: 'deb [arch=amd64] https://pkg.surfacelinux.com/debian release main'
+                line: 'deb [arch=amd64] https://pkg.surfacelinux.com/debian release main'
+                owner: root
+                group: root
+                mode: "0644"
+                create: true
+
+            - name: Update apt repositories
+              tags: package_manager, apt, surface
+              ansible.builtin.apt:
+                update_cache: true
+
+- name: Install flatpak
+  tags: package_manager, flatpak
+  ansible.builtin.package:
+    name: flatpak
+    state: latest
+
+- name: Add default flatpak repo
+  tags: package_manager, flatpak
+  community.general.flatpak_remote:
+    name: flathub
+    state: present
+
+
+# TERMINAL
+- name: Install terminal applications
+  tags: terminal
+  ansible.builtin.package:
+    name:
+      - stow
+      - unrar
+    state: latest
+
+- name: Download terminal applications from github
+  tags: terminal, github
+  become: true
+  become_user: braxion
+  block:
+    - name: Check fzf
+      tags: terminal, github
+      ansible.builtin.stat:
+        path: /home/braxion/.fzf/
+      register: check_fzf
+
+    - name: Download fzf
+      tags: terminal, github
+      when: not check_fzf.stat.exists | default(false)
+      ansible.builtin.git:
+        repo: https://github.com/junegunn/fzf.git
+        dest: ~/.fzf
+        depth: 1
+      notify: install_fzf
+
+    - name: Check zoxide
+      tags: terminal, github
+      ansible.builtin.stat:
+        path: /home/braxion/.local/bin/zoxide
+      register: check_zoxide
+
+    - name: Install zoxide
+      tags: terminal, github
+      when: not check_zoxide.stat.exists | default(false)
+      ansible.builtin.shell:
+        cmd: curl -sSfL https://raw.githubusercontent.com/ajeetdsouza/zoxide/main/install.sh | sh
+
+# OS
+- name: Handle debian based OS
+  tags: os, surface
+  when: ansible_os_family == 'Debian'
+  block:
+    - name: Handle braxiongo's OS
+      tags: os, surface
+      when: ansible_hostname == 'braxiongo'
+      block:
+        - name: Install linux-surface for Debian based distros
+          tags: os, surface
+          ansible.builtin.apt:
+            name:
+              - linux-image-surface
+              - linux-headers-surface
+              - libwacom-surface
+              - iptsd
+            update_cache: true
+            cache_valid_time: 300
+            state: latest
+
+        - name: Check for linux surface kernel secureboot key
+          tags: os, surface
+          ansible.builtin.package_facts:
+            manager: auto
+
+        - name: Install linux surface kernel secureboot key
+          tags: os, surface
+          when: 'not "linux-surface-secureboot-mok" in ansible_facts.packages'
+          ansible.builtin.package:
+            name: linux-surface-secureboot-mok
+            state: present
+          notify: reboot_surface_message
+
+
+# CUSTOMIZATION
+- name: Install keyboard customization software
+  tags: customization, keyboard
+  ansible.builtin.package:
+    name:
+      - "{{ package_xmodmap }}"
+      - "{{ package_xev }}"
+      - "{{ package_setxkbmap }}"
+    state: present
+
+# Here should be the .Xmodmap apply or nothing if i decide to manage all dotfiles the same
+
+- name: Handle microsoft fonts
+  tags: customization, fonts
+  block:
+    - name: Accept EULA (license) for ttf-mscorefonts-installer
+      tags: customization, package_manager, fonts
+      when: ansible_os_family == 'Debian'
+      ansible.builtin.debconf:
+        name: ttf-mscorefonts-installer
+        question: msttcorefonts/accepted-mscorefonts-eula
+        vtype: boolean
+        value: true
+
+    - name: Install microsoft fonts
+      tags: customization, package_manager, fonts
+      when: ansible_os_family == 'Debian'
+      ansible.builtin.package:
+        name:
+          - "{{ general_win_fonts_package }}"
+        state: latest
+
+    - name: Message about license in other OS_families
+      tags: Message, customization, fonts
+      when: ansible_os_family != 'Debian'
+      ansible.builtin.debug:
+        msg:
+          - "Please install {{ general_win_fonts_package }} with {{ ansible_pkg_mgr }} manually."
+          - "At this moment there is no way to accept the license using ansible with non debian distros."
+
+    - name: Install google opensource fonts for calibri and cambria
+      tags: customization, package_manager, fonts
+      ansible.builtin.package:
+        name:
+          - "{{ general_win_fonts_calibri }}"
+          - "{{ general_win_fonts_cambria }}"
+        state: latest
+
+- name: Create fonts directory
+  tags: customization, fonts
+  ansible.builtin.file:
+    path: /home/braxion/.local/share/fonts
+    state: directory
+    owner: braxion
+    mode: "0755"
+
+- name: Check for nerdfonts
+  tags: customization, fonts
+  ansible.builtin.stat:
+    path: /home/braxion/.local/share/fonts/RobotoMonoNerdFont-Regular.ttf
+  register: check_nerd_font
+
+- name: Handle nerd fonts
+  tags: customization, fonts
+  when: not check_nerd_font.stat.exists | default(false)
+  become: true
+  become_user: braxion
+  block:
+    - name: Create directory and download Nerd fonts
+      tags: customization, fonts
+      ansible.builtin.unarchive:
+        src: https://github.com/ryanoasis/nerd-fonts/releases/download/v3.2.1/RobotoMono.zip
+        dest: ~/.local/share/fonts
+        remote_src: true
+
+    - name: Refresh font cache
+      tags: customization, fonts
+      ansible.builtin.shell:
+        cmd: fc-cache -f
+      changed_when: false
+
+# GENERAL_GUI
+# - name: Install general applications
+#   tags: general, package_manager
+#   when: ansible_os_family == 'Debian'
+#   ansible.builtin.package:
+#     name:
+#     -
+#     state: latest
+
+- name: Install general applications flakpaks
+  tags: general, flatpak
+  community.general.flatpak:
+    name:
+      - com.google.Chrome
+      # - com.bitwarden.desktop
+    state: latest
+    method: system
+
+- name: Install Ulauncher
+  tags: general, package_manager
+  when: ansible_os_family == 'Debian'
+  ansible.builtin.apt:
+    deb: https://github.com/Ulauncher/Ulauncher/releases/download/5.15.7/ulauncher_5.15.7_all.deb
+
+
+# HARDWARE
+- name: Install hardware and diagnostics packages
+  tags: hardware, package_manager
+  ansible.builtin.package:
+    name:
+      - nvtop
+      - lm-sensors
+      - smartmontools
+    state: latest
+
+- name: Install hardware and diagnostics flakpaks
+  tags: hardware, flatpak
+  community.general.flatpak:
+    name:
+      - io.github.jonmagon.kdiskmark
+    state: latest
+    method: system
+
+- name: Install OpenRGB
+  tags: hardware, package_manager
+  when: ansible_os_family == 'Debian' and ansible_hostname == 'braxionbuild'
+  ansible.builtin.apt:
+    deb: https://openrgb.org/releases/release_0.9/openrgb_0.9_amd64_bookworm_b5f46e3.deb
+
+
+# PRODUCTIVITY
+- name: Check for vscode repo in apt
+  tags: productivity
+  when: ansible_os_family == 'Debian'
+  ansible.builtin.stat:
+    path: /etc/apt/sources.list.d/vscode.list
+  register: check_vscode
+
+- name: Handle vscode
+  tags: productivity
+  when: not check_vscode.stat.exists | default(false)
+  block:
+    - name: Download vscode
+      tags: productivity, package_manager
+      when: ansible_os_family == 'Debian'
+      ansible.builtin.get_url:
+        url: https://code.visualstudio.com/sha/download?build=stable&os=linux-deb-x64
+        dest: ~/code_latest.deb
+
+    - name: Install vscode
+      tags: productivity, package_manager
+      when: ansible_os_family == 'Debian'
+      ansible.builtin.apt:
+        deb: ~/code_latest.deb
+
+    - name: Remove vscode installer
+      tags: productivity, package_manager
+      when: ansible_os_family == 'Debian'
+      ansible.builtin.file:
+        path: ~/code_latest.deb
+        state: absent
+
+- name: Create .local/bin directory in braxion's home
+  tags: productivity
+  ansible.builtin.file:
+    path: /home/braxion/.local/bin
+    state: directory
+    owner: braxion
+    mode: "0755"
+
+- name: Check for Neovim
+  tags: productivity, neovim
+  ansible.builtin.stat:
+    path: /home/braxion/.local/bin/nvim
+  register: check_neovim
+
+- name: Handle Neovim
+  tags: productivity, neovim
+  when: not check_neovim.stat.exists | default(false)
+  become: true
+  become_user: braxion
+  block:
+    - name: Download and install Neovim
+      tags: productivity, neovim
+      ansible.builtin.unarchive:
+        src: https://github.com/neovim/neovim/releases/latest/download/nvim-linux64.tar.gz
+        dest: ~/.local/bin # This directory should be in $PATH
+        remote_src: true
+
+    - name: Set Neovim's symbolic link
+      tags: productivity, neovim
+      ansible.builtin.file:
+        src: ~/.local/bin/nvim-linux64/bin/nvim
+        path: ~/.local/bin/nvim
+        state: link
+        owner: braxion
+        mode: "0775"
+
+- name: Install productivity, management and work packages
+  tags: productivity, package_manager, python
+  ansible.builtin.package:
+    name:
+      - python3-pip # For systemwide python
+      - code
+      - git
+      - gcc # C compiler for neovim
+      - ripgrep # Line oriented search tool for neovim
+    state: latest
+
+- name: Install productivity, management and work flatpak
+  tags: productivity, flatpak
+  community.general.flatpak:
+    name:
+      - md.obsidian.Obsidian
+      - io.dbeaver.DBeaverCommunity
+    state: latest
+    method: system
+
+
+# PYTHON
+- name: Check miniconda
+  tags: productivity, python
+  ansible.builtin.stat:
+    path: /home/braxion/.miniconda3
+  register: check_miniconda
+
+- name: Handle miniconda
+  tags: productivity, python
+  when: not check_miniconda.stat.exists | default(false)
+  become: true
+  become_user: braxion
+  block:
+    - name: Create miniconda directory
+      tags: productivity, python
+      ansible.builtin.file:
+        path: ~/.miniconda3
+        state: directory
+        mode: "0775"
+        owner: braxion
+        recurse: true
+
+    - name: Download miniconda
+      tags: productivity, python
+      ansible.builtin.get_url:
+        url: https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh
+        dest: ~/.miniconda3/miniconda.sh
+        owner: braxion
+        mode: "0775"
+
+    - name: Install miniconda
+      tags: productivity, python
+      ansible.builtin.shell:
+        cmd: ~/.miniconda3/miniconda.sh -b -u -p ~/.miniconda3
+
+    - name: Remove miniconda installer
+      tags: productivity, python
+      ansible.builtin.file:
+        path: ~/.miniconda3/miniconda.sh
+        state: absent
+
+    #   SWITCHED TO PYENV, im still downloading conda
+    #   BUT THEY SHOULDN'T BE USED AT THE SAME TIME
+    # - name: Activate miniconda
+    #   tags: productivity, python
+    #   ansible.builtin.shell:
+    #     cmd: ~/.miniconda3/bin/conda init bash
+
+
+# PYENV COMES WITH VIRTUALENV
+# - name: Check for virtualenv
+#   tags: productivity, python
+#   ansible.builtin.stat:
+#     path: /home/braxion/.virtualenv
+#   register: check_virtualenv
+
+# - name: Handle virtualenv
+#   tags: productivity, python
+#   when: not check_virtualenv.stat.exists | default(false)
+#   become: true
+#   become_user: braxion
+#   block:
+#     - name: Create general virtualenv directory
+#       tags: productivity, python
+#       ansible.builtin.file:
+#         path: ~/.virtualenv
+#         owner: braxion
+#         group: braxion
+#         recurse: true
+#         mode: "0775"
+
+#     - name: Install virtualenv
+#       tags: productivity, python
+#       ansible.builtin.pip
+#         name: virtualenv
+#         extra_args: --user
+
+
+- name: Check for pyenv
+  tags: productivity, python
+  ansible.builtin.stat:
+    path: /home/braxion/.pyenv
+  register: check_pyenv
+
+# I think in debian it's only needed to install tk-dev and build-essential
+- name: Handle pyenv
+  tags: productivity, python
+  when: not check_pyenv.stat.exists | default(false)
+  block:
+    - name: Install pyenv prerequisites
+      ansible.builtin.package:
+        name:
+          - build-essential
+          - libssl-dev
+          - zlib1g-dev
+          - libbz2-dev
+          - libreadline-dev
+          - libsqlite3-dev
+          - curl
+          - libncursesw5-dev
+          - xz-utils
+          - tk-dev
+          - libxml2-dev
+          - libxmlsec1-dev
+          - libffi-dev
+          - liblzma-dev
+
+    - name: Pyenv installation
+      tags: productivity, python
+      become: true
+      become_user: braxion
+      block:
+        - name: Install pyenv
+          tags: productivity, python
+          ansible.builtin.shell:
+            cmd: curl https://pyenv.run | bash
+
+        - name: Installed message
+          tags: productivity, python
+          ansible.builtin.debug:
+            msg: REMEMBER TO CONFIGURE YOUR SHELL ENVIRONMENT TO WORK WITH PYENV
+
+
+# FUN
+# - name: Install Fun, hobbies and leisure packages
+#   tags: fun, package_manager
+#   ansible.builtin.package:
+#     name:
+#       -
+#     state: latest
+
+- name: Install Fun, hobbies and leisure flatpak
+  tags: fun, flatpak
+  community.general.flatpak:
+    name:
+      - org.videolan.VLC
+      - tv.plex.PlexDesktop
+      - com.discordapp.Discord
+      - com.spotify.Client
+      - com.moonlight_stream.Moonlight
+      - org.DolphinEmu.dolphin-emu
+      - info.cemu.Cemu
+      - org.ryujinx.Ryujinx
+      # - io.github.parnassius.SysDVR-Qt # Switch DVR
+    state: latest
+    method: system
+
+- name: Handle Steam and it fix
+  tags: fun, steam
+  become: true
+  become_user: braxion
+  block:
+    - name: Install steam
+      tags: fun, steam
+      when: ansible_hostname == 'braxionbuild'
+      ansible.builtin.package:
+        name: steam
+        state: latest
+
+    - name: Check steam fix in braxionbuild
+      tags: fun, steam
+      when: ansible_hostname == 'braxionbuild'
+      ansible.builtin.stat:
+        path: /mnt/library/SteamLibrary/steamapps/compatdata
+      register: check_compatdata
+
+    - name: Handle braxionbuild steam library fix
+      tags: fun, steam
+      block:
+        - name: Create compatdata directory
+          tags: fun, steam
+          ansible.builtin.file:
+            path: ~/.steam/steam/steamapps/compatdata
+            owner: braxion
+            group: braxion
+            mode: "744"
+            state: directory
+
+        - name: Apply steam fix in braxionbuild by creating a symlink
+          tags: fun, steam
+          when: not check_compatdata.stat.exists | default(false) and ansible_hostname == 'braxionbuild'
+          ansible.builtin.file:
+            src: ~/.steam/steam/steamapps/compatdata
+            dest: /mnt/library/SteamLibrary/steamapps/compatdata
+            state: 'link'
+
+
+# SERVICES
+- name: Create wakeup fix service
+  tags: services
+  when: ansible_hostname == 'braxionbuild'
+  ansible.builtin.template:
+    src: wakeup_disable_gpp0_service.j2
+    dest: /etc/systemd/system/wakeup_disable_gpp0.service
+    owner: root
+    group: root
+    mode: "755"
+  notify: start_wakeup_service
+
+- name: Enable and start smartd service (SMART)
+  tags: services
+  ansible.builtin.service:
+    name: smartd
+    state: started
+    enabled: true
+
+# CONFIGURATION
+- name: Handle configuration for braxion
+  tags: config
+  become: true
+  become_user: braxion
+  block:
+    - name: Create dotfiles configuration directories
+      tags: config
+      ansible.builtin.file:
+        path: "~/.config/{{ item }}"
+        state: directory
+        owner: braxion
+        group: root
+        mode: "0744"
+      loop:
+        - zsh
+        - fzf
+        - tmux
+        - nvim
+
+
+# MISC
+- name: Check if Arch based Linux requires a reboot
+  tags: arch, misc
+  when: ansible_os_family == 'Arch'
+  ansible.builtin.stat:
+    path: /run/reboot-required
+  register: arch_reboot_required
+
+- name: Check if Debian based Linux requires a reboot
+  tags: debian, misc
+  when: ansible_os_family == 'Debian'
+  ansible.builtin.stat:
+    path: /var/run/reboot-required
+  register: debian_reboot_required
+
+- name: Check if Redhat based Linux requires a reboot
+  tags: redhat, misc
+  when: ansible_os_family == 'Redhat'
+  ansible.builtin.stat:
+    path: /var/run/reboot-required.pkgs
+  register: redhat_reboot_required
+
+- name: Show message if reboot is required
+  tags: misc
+  when: arch_reboot_required.stat.exists | default(false) or debian_reboot_required.stat.exists | default(false) or redhat_reboot_required.stat.exists | default(false)
+  ansible.builtin.debug:
+    msg: SYSTEM NEEDS TO REBOOT

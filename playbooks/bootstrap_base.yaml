@@ -1,0 +1,7 @@
+---
+
+- name: Apply the base role to all machines
+  hosts: all
+  become: true
+  roles: 
+    - base

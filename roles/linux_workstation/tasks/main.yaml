@@ -1,0 +1,30 @@
+# USER
+- name: User block
+  block:
+    - name: Create user braxion
+      tags: user, always
+      ansible.builtin.user:
+        name: braxion
+        groups:
+          - root
+        append: true
+
+    - name: Add ssh key for braxion
+      tags: user, always, ssh
+      ansible.posix.authorized_key:
+        user: braxion
+        key: "{{ lookup('file', '../general_templates/public_keys/braxion_khlab.pub') }}"
+
+    - name: Add braxion group
+      tags: user,  always
+      ansible.builtin.group:
+        name: braxion
+
+    # - name: Add sudoers file for braxion
+    #   tags: user, always, ssh
+    #   ansible.builtin.template:
+    #     src: sudoers_braxion.j2
+    #     dest: /etc/sudoers.d/braxion
+    #     owner: root
+    #     group: root
+    #     mode: "0440"

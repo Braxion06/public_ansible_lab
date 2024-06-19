@@ -1,0 +1,45 @@
+---
+# Ansible Master playbook
+
+
+- name: Apply the proxmox role
+  hosts: proxmox
+  become: true
+  roles:
+    - proxmox
+
+- name: Apply the base role to all machines
+  hosts: all
+  become: true
+  roles: 
+    - base
+
+- name: Apply the hypervisor role
+  hosts: hypervisor
+  become: true
+  roles: 
+    - hypervisor
+
+- name: Apply the main_workstation role
+  hosts: main_workstation
+  become: true
+  roles:
+    - main_workstation
+
+- name: Apply the vm role
+  hosts: vm
+  become: true
+  roles:
+    - vm
+
+- name: Apply the ansible_server role
+  hosts: ansible_server
+  become: true
+  roles:
+    - ansible_server
+
+- name: Apply the docker_host role
+  hosts: docker_host
+  become: true
+  roles:
+    - docker_host

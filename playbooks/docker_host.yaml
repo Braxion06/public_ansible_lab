@@ -1,0 +1,13 @@
+---
+
+- name: Apply the base role
+  hosts: docker_host
+  become: true
+  roles: 
+    - base
+
+- name: Apply the docker role
+  hosts: docker_host
+  become: true
+  roles: 
+    - docker_host

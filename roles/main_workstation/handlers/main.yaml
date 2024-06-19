@@ -1,0 +1,15 @@
+- name: start_wakeup_service
+  ansible.builtin.service:
+    name: wakeup_disable_gpp0
+    state: started
+    enabled: true
+
+- name: reboot_surface_message
+  ansible.builtin.debug:
+    msg: System needs to reboot and input "surface" as the secureboot key in MOK MENU(blue screen menu). After this update-grub 
+
+- name: install_fzf
+  become: true
+  become_user: braxion
+  ansible.builtin.shell:
+    cmd: ~/.fzf/install --xdg --key-bindings --completion --no-update-rc

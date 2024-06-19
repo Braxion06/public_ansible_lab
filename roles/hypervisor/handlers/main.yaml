@@ -1,0 +1,8 @@
+- name: update_grub
+  ansible.builtin.shell:
+    cmd: update-grub
+
+- name: reboot_client
+  when: not inventory_hostname in groups ['mission_critical']
+  ansible.builtin.reboot:
+    reboot_timeout: 300

@@ -1,0 +1,6 @@
+---
+
+- name: Apply the network_storage role
+  hosts: network_storage
+  become: true
+  roles: network_storage

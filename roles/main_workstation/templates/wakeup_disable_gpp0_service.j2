@@ -1,0 +1,13 @@
+# PATH =  /etc/systemd/system/wakeup_disable_gpp0.service
+# CONTEXT = Create service that fixes Gigabyte B550 motherboard suspend bug
+# CHANGE =  create service
+
+[Unit]
+Description=Fix for the suspend issue in Gigabyte B550 lineup
+
+[Service]
+Type=oneshot
+ExecStart=/bin/sh -c "echo GPP0 >> /proc/acpi/wakeup"
+
+[Install]
+WantedBy=multi-user.target

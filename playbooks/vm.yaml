@@ -1,0 +1,12 @@
+--- 
+- name: Apply the base role
+  hosts: vm
+  become: true
+  roles:
+    - base
+
+- name: Apply the vm role
+  hosts: vm
+  become: true
+  roles:
+    - vm

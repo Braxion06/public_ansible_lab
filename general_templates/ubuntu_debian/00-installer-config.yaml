@@ -1,0 +1,22 @@
+# PATH =  /etc/netplan/
+# CONTEXT = ubuntu network config file
+# CHANGE =  configure network
+
+# This is the network config written by 'subiquity'
+network:
+  ethernets:
+    enp6s18:
+      dhcp4: false
+      addresses:
+        - 192.168.10.60/24
+      routes:
+        - to: default
+          via: 192.168.10.1
+      nameservers:
+        search:
+          - KHLab
+        addresses:
+          - 192.168.10.4
+          - 1.1.1.1
+          - 1.0.0.1
+  version: 2

@@ -1,0 +1,12 @@
+virtualenv
+ansible
+ansible-dev-tools
+requests
+jupyterlab
+pyarrow
+pandas
+numpy
+polars
+scikit-learn
+matplotlib
+sqlalchemy

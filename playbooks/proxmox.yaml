@@ -1,0 +1,19 @@
+---
+
+- name: Apply the proxmox role
+  hosts: proxmox
+  become: true
+  roles:
+    - proxmox
+
+- name: Apply the base role
+  hosts: proxmox
+  become: true
+  roles: 
+    - base
+
+- name: Apply the hypervisor role
+  hosts: proxmox
+  become: true
+  roles:
+    - hypervisor
